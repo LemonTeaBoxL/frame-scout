@@ -1,0 +1,50 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Threading;
+using Microsoft.Win32;
+namespace FrameScout {
+ public class ColumnState {public string Name,Key;public int Index;public double Width;public bool Visible;}
+ public class SavedVideo {public string Path,Fingerprint,Status;public long Size,Ticks;public int? ManualReview;public VideoInfo Info;public AnalysisResult Result;public bool Changed;}
+ public class SavedIssue {public int CueId,State;public bool Accepted;public string OriginalTerm,SuggestedTerm,Reason,Evidence;}
+ public class SavedCue {public int Id,State;public string Corrected;}
+ public class SavedSubtitle {public string Path,Hash,VideoPath,Status;public bool Completed,ManualVideo;public int? ManualReview;public List<SavedCue> Cues=new List<SavedCue>();public List<SavedIssue> Issues=new List<SavedIssue>();}
+ public class SubtitleProject {public double[] PanelWidths;public string ScriptPath,Script,ScriptHash,Selected;public List<Noun> Nouns=new List<Noun>();public List<SavedSubtitle> Files=new List<SavedSubtitle>();public List<UndoEntry> Undo=new List<UndoEntry>();public List<string> Logs=new List<string>();public bool Multi;public int BatchFiles=5,Dialogs=2;}
+ public class ProjectState {public double[] VideoPanelWidths;public int Version=2;public Settings Settings;public List<SavedVideo> Videos=new List<SavedVideo>();public List<string> Roots=new List<string>();public List<ColumnState> Columns=new List<ColumnState>();public SubtitleProject Subtitles;public string SelectedVideo;public double Position,LeftWidth=1.08,RightWidth=1;public int SortIndex,Tab;public bool SortDescending;}
+ public static class ProjectStore {
+  public static string AutoPath {get {return Path.Combine(Path.GetDirectoryName(Settings.FilePath),"last-session.vcheck");}}
+  public static string TextHash(string text) {using(var sha=System.Security.Cryptography.SHA256.Create())return Convert.ToBase64String(sha.ComputeHash(Encoding.UTF8.GetBytes(text??"")));}
+  public static void Write(string file,ProjectState state) {Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(file)));string temp=file+".tmp";using(var f=File.Create(temp))using(var zip=new GZipStream(f,CompressionMode.Compress))using(var writer=new StreamWriter(zip,new UTF8Encoding(false)))writer.Write(Util.Json().Serialize(state));if(File.Exists(file))File.Replace(temp,file,file+".bak",true);else File.Move(temp,file);}
+  public static ProjectState Read(string file) {using(var f=File.OpenRead(file))using(var zip=new GZipStream(f,CompressionMode.Decompress))using(var reader=new StreamReader(zip,Encoding.UTF8)) {string text=reader.ReadToEnd();var state=Util.Json().Deserialize<ProjectState>(text);if(state==null||state.Version!=2||state.Settings==null||state.Videos==null||state.Roots==null||state.Columns==null)throw new IOException("项目格式不受支持。");if(!text.Contains("\"ClipDefaultVersion\"")){state.Settings.ClipMaxFrames=4;state.Settings.ClipDefaultVersion=14;}return state;}}
+ }
+ public sealed partial class Shell {
+  public static bool DisableProjectAutosave;
+  DispatcherTimer autosaveTimer;bool projectDirty,projectLoading,projectSaving;readonly object saveGate=new object();string projectPath=ProjectStore.AutoPath,lastLayout="";
+  void QueueSave() {if(!projectLoading)projectDirty=true;}
+  void SetupProjectAutosave() {
+   autosaveTimer=new DispatcherTimer {Interval=TimeSpan.FromSeconds(2)};autosaveTimer.Tick+=async(s,e)=> {if(DisableProjectAutosave||closing||projectLoading||projectSaving)return;string layout=LayoutKey();if(layout!=lastLayout){lastLayout=layout;projectDirty=true;}if(projectDirty)await SaveAutomatic();};if(!DisableProjectAutosave)autosaveTimer.Start();
+   Window.Loaded+=async(s,e)=> {if(!DisableProjectAutosave&&File.Exists(ProjectStore.AutoPath))try {await LoadProject(ProjectStore.AutoPath);}catch(Exception ex) {statusText.Text="自动恢复未完成："+ex.Message;}};
+   Window.Closing+=(s,e)=> {autosaveTimer.Stop();if(DisableProjectAutosave||projectLoading)return;try {var snapshot=CaptureProject();lock(saveGate){ProjectStore.Write(ProjectStore.AutoPath,snapshot);if(projectPath!=ProjectStore.AutoPath)ProjectStore.Write(projectPath,snapshot);}}catch(Exception ex){try {File.WriteAllText(Path.Combine(Path.GetDirectoryName(Settings.FilePath),"project-save-error.txt"),ex.Message);}catch {}}};
+  }
+  string LayoutKey() {return string.Join(";",videos.Columns.Select(c=>c.Header+":"+c.DisplayIndex+":"+c.Visibility+":"+Math.Round(c.ActualWidth)))+"|"+Get<ComboBox>("VideoSort").SelectedIndex+"|"+sortDescending+"|"+string.Join(",",PanelLayout.Capture(Get<Grid>("VideoColumns")))+"|"+subtitlePanel.LayoutKey();}
+  ProjectState CaptureProject() {Settings options;try {options=ReadSettings();}catch {options=Settings.Load();}var columns=Get<System.Windows.Controls.Grid>("VideoColumns").ColumnDefinitions;return new ProjectState {Settings=options,Videos=items.Select(x=>new SavedVideo {Path=x.Path,Fingerprint=x.Fingerprint,Status=x.Running?"待检测":x.Status,Size=x.FileSize,Ticks=x.ModifiedTicks,ManualReview=x.ManualReview,Info=x.Info,Result=x.Result,Changed=x.Changed||x.Running}).ToList(),Roots=roots.ToList(),Columns=videos.Columns.Select(c=>new ColumnState {Name=c.Header.ToString(),Key=c.SortMemberPath,Index=c.DisplayIndex,Width=c.ActualWidth>5?c.ActualWidth:c.Width.Value,Visible=c.Visibility==Visibility.Visible}).ToList(),Subtitles=subtitlePanel.CaptureProject(),SelectedVideo=current==null?null:current.Path,Position=position,LeftWidth=columns[0].Width.Value,RightWidth=columns[4].Width.Value,VideoPanelWidths=PanelLayout.Capture(Get<Grid>("VideoColumns")),SortIndex=Get<ComboBox>("VideoSort").SelectedIndex,SortDescending=sortDescending,Tab=Get<TabControl>("MainTabs").SelectedIndex};}
+  async Task SaveAutomatic() {projectSaving=true;projectDirty=false;var state=CaptureProject();try {await Task.Run(()=> {lock(saveGate){ProjectStore.Write(ProjectStore.AutoPath,state);if(projectPath!=ProjectStore.AutoPath)ProjectStore.Write(projectPath,state);}});if(!closing)Get<TextBlock>("ProjectStatus").Text="已自动保存 "+DateTime.Now.ToString("HH:mm:ss");}catch(Exception ex) {projectDirty=true;if(!closing)Get<TextBlock>("ProjectStatus").Text="保存失败："+ex.Message;}finally {projectSaving=false;}}
+  async void SaveProjectAs() {var d=new SaveFileDialog {Title="保存检测项目",Filter="视频巡检项目|*.vcheck",FileName="视频巡检项目"};if(d.ShowDialog(Window)!=true)return;projectPath=d.FileName;QueueSave();await SaveAutomatic();Get<TextBlock>("ProjectStatus").ToolTip=projectPath;}
+  async void OpenProject() {if(scanCancel!=null||subtitlePanel.IsBusy){statusText.Text="请先停止检测或字幕校对，再打开项目。";return;}var d=new OpenFileDialog {Title="打开检测项目",Filter="视频巡检项目|*.vcheck"};if(d.ShowDialog(Window)!=true)return;try {await LoadProject(d.FileName);projectPath=d.FileName;QueueSave();}catch(Exception ex){statusText.Text="打开项目失败："+ex.Message;}}
+  async Task LoadProject(string file) {
+   projectLoading=true;try {var state=await Task.Run(()=>ProjectStore.Read(file));if(closing)return;Pause(false);var validated=await Task.Run(()=>state.Videos.Select(v=> {try {var fi=new FileInfo(v.Path);bool same=fi.Exists&&fi.Length==v.Size&&fi.LastWriteTimeUtc.Ticks==v.Ticks&&v.Fingerprint==Fingerprint(v.Path);bool rules=v.Result==null||v.Result.SettingsSignature==state.Settings.Signature();if(!same||!rules){v.Result=null;v.ManualReview=null;v.Changed=true;v.Status=!same?"文件已变更，待重检":"参数已变更，待重检";if(!same)v.Info=null;}}catch {v.Result=null;v.ManualReview=null;v.Changed=true;v.Status="文件暂不可读";}return v;}).ToList());
+    items.Clear();roots.Clear();foreach(var r in state.Roots)roots.Add(r);foreach(var v in validated)items.Add(new VideoItem {Path=v.Path,Fingerprint=v.Fingerprint,FileSize=v.Size,ModifiedTicks=v.Ticks,ManualReview=v.ManualReview,Info=v.Info,Result=v.Result,Status=v.Status,Changed=v.Changed});UpdateList();
+    workers.SelectedItem=Math.Max(1,Math.Min(Environment.ProcessorCount,state.Settings.Workers));sensitivity.Value=state.Settings.SensitivityValue;blackMin.Text=Util.Num(state.Settings.BlackMin);Get<TextBox>("ClipMaxFrames").Text=state.Settings.ClipMaxFrames.ToString();Get<CheckBox>("SkipClipTail").IsChecked=state.Settings.SkipClipTail;Get<TextBox>("ClipTailFrames").Text=state.Settings.ClipTailFrames.ToString();Get<TextBox>("BlackEdge").Text=state.Settings.BlackEdgeFrames.ToString();Get<CheckBox>("BlackMiddle").IsChecked=state.Settings.BlackMiddle;checkInsert.IsChecked=state.Settings.DetectInsert;checkJump.IsChecked=state.Settings.DetectJump;checkBlack.IsChecked=state.Settings.DetectBlack;Get<CheckBox>("CheckSingle").IsChecked=state.Settings.DetectSingleJump;
+    foreach(var c in state.Columns.OrderBy(x=>x.Index)){var col=!string.IsNullOrEmpty(c.Key)?videos.Columns.FirstOrDefault(x=>x.SortMemberPath==c.Key):videos.Columns.FirstOrDefault(x=>x.Header.ToString()==c.Name);if(col!=null){col.Visibility=c.Visible?Visibility.Visible:Visibility.Collapsed;col.Width=Math.Max(35,Math.Min(1500,c.Width));col.DisplayIndex=Math.Max(0,Math.Min(videos.Columns.Count-1,c.Index));}}
+    var layout=Get<Grid>("VideoColumns").ColumnDefinitions;layout[0].Width=new GridLength(Math.Max(0.1,state.LeftWidth),GridUnitType.Star);layout[4].Width=new GridLength(Math.Max(0.1,state.RightWidth),GridUnitType.Star);PanelLayout.Restore(Get<Grid>("VideoColumns"),state.VideoPanelWidths);sortDescending=state.SortDescending;Get<ComboBox>("VideoSort").SelectedIndex=Math.Max(0,Math.Min(6,state.SortIndex));Get<Button>("SortDirection").Content=sortDescending?"↓":"↑";ApplySort();
+    await subtitlePanel.RestoreProject(state.Subtitles);Get<TabControl>("MainTabs").SelectedIndex=Math.Max(0,Math.Min(1,state.Tab));videos.SelectedItem=items.FirstOrDefault(x=>x.Path==state.SelectedVideo)??items.FirstOrDefault();if(current!=null&&current.Info!=null)Seek(state.Position,true);statusText.Text="已恢复项目："+items.Count+" 个视频；变更文件已标为待重检。";Get<TextBlock>("ProjectStatus").Text="项目已恢复";
+   }finally {projectLoading=false;projectDirty=false;}
+  }
+ }
+}

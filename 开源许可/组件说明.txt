@@ -1,0 +1,15 @@
+﻿第三方组件说明
+
+本程序的界面与检测逻辑源码附在“源码”目录，采用 MIT 许可。
+使用 Windows 自带 .NET Framework / WPF，不单独分发该运行时。
+
+FFmpeg 7.1 essentials_build-www.gyan.dev
+作为独立命令行进程运行，完整 GPLv3 文本见 FFmpeg-GPLv3.txt，构建信息见 FFmpeg版本.txt。
+官方项目：https://ffmpeg.org/
+对应主项目源码：https://github.com/FFmpeg/FFmpeg/tree/n7.1
+构建项目：https://github.com/GyanD/codexffmpeg
+构建说明：https://www.gyan.dev/ffmpeg/builds/
+当前二进制来自本机已有 imageio-ffmpeg 0.6.0 所附组件。
+https://pypi.org/project/imageio-ffmpeg/0.6.0/
+https://github.com/imageio/imageio-ffmpeg/tree/v0.6.0
+对外再分发时，请遵守 FFmpeg 及其所含组件的许可并提供对应源代码。

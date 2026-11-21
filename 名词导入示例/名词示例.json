@@ -1,0 +1,19 @@
+{
+  "nouns": [
+    {
+      "canonical": "林清",
+      "aliases": [
+        "小清",
+        "林姑娘"
+      ],
+      "category": "人物"
+    },
+    {
+      "canonical": "云州",
+      "aliases": [
+        "云州城"
+      ],
+      "category": "地点"
+    }
+  ]
+}

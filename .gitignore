@@ -1,0 +1,33 @@
+# Build outputs and binary dependencies
+*.exe
+*.pdb
+*.zip
+bin/
+obj/
+.vs/
+/引擎/ffmpeg.exe
+
+# Local settings, credentials, projects and test material
+.env
+.env.*
+**/api.json
+**/settings.json
+**/calibration.json
+*.vcheck
+*.vcheck.bak
+*.bak
+*.tmp
+*.log
+**/编译结果.txt
+work/
+outputs/
+验证/
+测试素材/
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.srt
+Thumbs.db
+Desktop.ini
+/视频巡检.exe.config
