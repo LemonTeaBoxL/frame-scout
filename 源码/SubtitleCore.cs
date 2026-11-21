@@ -65,12 +65,12 @@ namespace FrameScout {
   public string Endpoint="https://api.openai.com/v1",Model="",ProtectedKey="";public bool Remember=true;public int TimeoutSeconds=120;
   [ScriptIgnore] public string Key="";
   static string FilePath {get {return System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Settings.FilePath),"api.json");}}
-  public static ApiConfig Load() {try {var c=Util.Json().Deserialize<ApiConfig>(File.ReadAllText(FilePath))??new ApiConfig();if(c.Remember&&c.ProtectedKey.Length>0)c.Key=Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(c.ProtectedKey),null,DataProtectionScope.CurrentUser));return c;}catch {return new ApiConfig();}}
-  public void Save() {Directory.CreateDirectory(System.IO.Path.GetDirectoryName(FilePath));ProtectedKey=Remember&&Key.Length>0?Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(Key),null,DataProtectionScope.CurrentUser)):"";File.WriteAllText(FilePath,Util.Json().Serialize(this));}
+  public static ApiConfig Load() {try {var c=Util.Json().Deserialize<ApiConfig>(File.ReadAllText(FilePath))??new ApiConfig();if(c.Remember&&c.ProtectedKey.Length>0)c.Key=Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(c.ProtectedKey),null,DataProtectionScope.CurrentUser));Diagnostics.RegisterSecret(c.Key);return c;}catch {return new ApiConfig();}}
+  public void Save() {Diagnostics.RegisterSecret(Key);Directory.CreateDirectory(System.IO.Path.GetDirectoryName(FilePath));ProtectedKey=Remember&&Key.Length>0?Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(Key),null,DataProtectionScope.CurrentUser)):"";File.WriteAllText(FilePath,Util.Json().Serialize(this));}
   public string BaseUrl() {Uri uri;string s=Endpoint.Trim().TrimEnd('/');foreach(var suffix in new[]{"/chat/completions","/models"})if(s.EndsWith(suffix,StringComparison.OrdinalIgnoreCase))s=s.Substring(0,s.Length-suffix.Length);if(!Uri.TryCreate(s,UriKind.Absolute,out uri)||(uri.Scheme!="http"&&uri.Scheme!="https")||!string.IsNullOrEmpty(uri.UserInfo)||!string.IsNullOrEmpty(uri.Query)||!string.IsNullOrEmpty(uri.Fragment))throw new ArgumentException("请输入有效的接口根地址，例如 https://服务商域名/v1。");if(uri.AbsolutePath=="/")s+="/v1";return s;}
  }
  public sealed class AiClient {
-  public Action<string> Trace;public string ConversationTag="";readonly ApiConfig config;public AiClient(ApiConfig c) {config=c;}
+  public Action<string> Trace;public string ConversationTag="";readonly ApiConfig config;public AiClient(ApiConfig c) {config=c;Diagnostics.RegisterSecret(c.Key);Uri endpoint;Diagnostics.Log("api.client",new{Host=Uri.TryCreate(c.Endpoint,UriKind.Absolute,out endpoint)?endpoint.Host:"<invalid>",c.Model,c.TimeoutSeconds});}
   public static Dictionary<string,object> Map(object obj) {return obj as Dictionary<string,object>??new Dictionary<string,object>();}
   public static string Str(Dictionary<string,object> map,string key) {object value;return map.TryGetValue(key,out value)&&value!=null?value.ToString():"";}
   public static object[] Array(Dictionary<string,object> map,string key) {object value;return map.TryGetValue(key,out value)?value as object[]??new object[0]:new object[0];}

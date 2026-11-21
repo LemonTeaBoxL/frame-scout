@@ -28,6 +28,7 @@ namespace FrameScout {
   public int ClipTailFrames=60;
   public int BlackEdgeFrames=15;
   public bool BlackMiddle=false;
+  public bool DiagnosticMode=false;
   public static string DataDirectory {get {string custom=Environment.GetEnvironmentVariable("FRAMESCOUT_DATA_DIR");return string.IsNullOrWhiteSpace(custom)?Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"FrameScout"):Path.GetFullPath(custom);}}
   public static string FilePath {get {return Path.Combine(DataDirectory,"settings.json");}}
   public static Settings Load() { try {string text=File.ReadAllText(FilePath);var s=Util.Json().Deserialize<Settings>(text)??new Settings();if(!text.Contains("SensitivityValue"))s.SensitivityValue=s.Sensitivity=="保守"?10:s.Sensitivity=="灵敏"?70:25;s.SensitivityValue=Math.Max(0,Math.Min(100,s.SensitivityValue));if(!text.Contains("\"ClipDefaultVersion\""))s.ClipMaxFrames=4;s.ClipDefaultVersion=14;return s;} catch { return new Settings { Workers=Math.Max(1,Math.Min(2,Environment.ProcessorCount/2)) }; } }
@@ -47,6 +48,7 @@ namespace FrameScout {
   public double Start {get;set;}
   public double End {get;set;}
   public string Detail {get;set;}
+  public string Rule {get;set;}
   public string TimeText {get { return Util.Time(Start); }}
   public string LengthText {get { return string.Format("{0} 帧 / {1:0.###} 秒",Math.Max(1,EndFrame-Frame+1),Math.Max(0,End-Start)); }}
   public string FrameText {get { return (Frame+1).ToString(); }}
@@ -61,6 +63,7 @@ namespace FrameScout {
   public bool CheckedInsert, CheckedJump, CheckedBlack;
   public string Notice="";
   public string SettingsSignature;
+  public string DiagnosticId,DiagnosticFolder;
   public int ClipCheckedFrames,ClipSkippedTailFrames,ClipTailBlackFrames;
  }
  public class VideoItem : INotifyPropertyChanged {

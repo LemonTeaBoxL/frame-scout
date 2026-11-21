@@ -31,3 +31,8 @@ outputs/
 Thumbs.db
 Desktop.ini
 /视频巡检.exe.config
+
+# Diagnostic output
+diagnostics/
+*.jsonl
+*.diagzip
